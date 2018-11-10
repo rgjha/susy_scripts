@@ -21,22 +21,15 @@ for i in range(len(toCheck)):
     sys.exit(1)
 
 # Average over SUGRA components for each measurement
-matvecs = 0    # Make sure all columns are accounted for
 phase = 0.0
 log_mag = 0.0
-total = -1    # In case we're just checking a subset without "Q has # columns"
 for i in range(len(toCheck)):
   check = -1
   for line in open(toCheck[i]):
-    # Format: Q has # columns --> # matvecs and # MBytes per core...
-    if line.startswith('Q has '):
+    # Format: Columns #--# of #: pivoting #<--># to obtain re im
+    #         Columns #--# of #: no need to pivot to obtain re im
+    if line.startswith('Columns '):
       temp = line.split()
-      total = int(temp[5])
-
-    # Format: Columns #--# of #: # matvecs in # seconds re im
-    elif line.startswith('Columns '):
-      temp = line.split()
-      matvecs += int(temp[4])
       re = float(temp[-2])
       im = float(temp[-1])
 
@@ -48,15 +41,12 @@ for i in range(len(toCheck)):
     print toCheck[i], "did not complete"
     sys.exit(1)
 
-if total > 0 and matvecs != total:
-  print "ERROR: Only counted %d of %d matvecs" % (matvecs, total)
-
-tr = np.fmod(-1.0 * phase, 2.0 * np.pi)
+tr = np.fmod(phase, 2.0 * np.pi)
 if tr < 0:
   phase = tr + 2.0 * np.pi
 else:
   phase = tr
 
 print "%.8g %.8g %.8g %.8g" % \
-      (-1.0 * log_mag, phase, np.fabs(np.cos(phase)), np.fabs(np.sin(phase)))
+      (log_mag, phase, np.fabs(np.cos(phase)), np.fabs(np.sin(phase)))
 # ------------------------------------------------------------------

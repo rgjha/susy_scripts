@@ -4,11 +4,8 @@ import sys
 import glob
 import numpy as np
 # ------------------------------------------------------------------
-# Determine xi from small-volume and blocked-large-volume Konishi operators,
+# Determine xi from small-volume and blocked-large-volume scalar eigenvalues,
 # scaling mu \propto 1 / L
-
-# Only consider operator built from two log-polar links
-# Equating these should give xi^2; print out xi
 
 # No arguments yet...
 small_tag = []
@@ -57,13 +54,12 @@ large_tag.append('Nc2_8nt8/l3.0_b0.35_G0.05');    small_tag.append('Nc2_4nt4/l3.
 large_tag.append('Nc2_8nt8/l4.0_b0.4_G0.05');     small_tag.append('Nc2_4nt4/l4.0_b0.8_G0.05')
 
 for i in range(len(small_tag)):
-  outfilename = large_tag[i] + '/results/xi.Kop'
+  outfilename = large_tag[i] + '/results/xi.eig'
   print "Comparing %s vs. %s" % (small_tag[i], large_tag[i])
-  smallFile = small_tag[i] + '/results/ops.dat'
-  largeFile = large_tag[i] + '/results/ops.dat'
+  smallFile = small_tag[i] + '/results/blocked_eigs.dat'
+  largeFile = large_tag[i] + '/results/blocked_eigs.dat'
 
   # First make sure we're calling this from the right place
-  # Should be able to retain these independent of commenting out above
   if not os.path.isfile(smallFile):
     print "ERROR: missing file", smallFile
     sys.exit(1)
@@ -71,39 +67,73 @@ for i in range(len(small_tag)):
     print "ERROR: missing file", largeFile
     sys.exit(1)
 
+  # Extract Nc from path
+  if large_tag[i].startswith('Nc2'):
+    Nc = 2
+  elif large_tag[i].startswith('Nc3'):
+    Nc = 3
+  elif large_tag[i].startswith('Nc4'):
+    Nc = 4
+  else:
+    print "Couldn't determine Nc from", large_tag[i]
+
   # Print out rescaling parameter xi for each blocking level
-  # Require that n-times-blocked L Konishi operator
-  # matches (n-1)-times-blocked (L/2) result
-  smallOp  = []
-  smallErr = []
+  # Require that rescaled n-times-blocked scalar eigenvalues
+  # matches the corresponding (n-1)-times-blocked eigenvalue
+  smallEig = [[] ,[]]
+  smallErr = [[] ,[]]
   for line in open(smallFile):
     if line.startswith('# '):
       continue
+    # Format: num bl ave err
     temp = line.split()
-    smallOp.append(float(temp[1]))
-    smallErr.append(float(temp[2]) / float(temp[1]))
-  largeOp  = []
-  largeErr = []
+    num = int(temp[0])
+    if num == 0:
+      smallEig[0].append(float(temp[2]))
+      smallErr[0].append(float(temp[3]) / float(temp[2]))
+    elif num == Nc - 1:
+      smallEig[1].append(float(temp[2]))
+      smallErr[1].append(float(temp[3]) / float(temp[2]))
+
+  largeEig = [[] ,[]]
+  largeErr = [[] ,[]]
   for line in open(largeFile):
-    if line.startswith('# ') or line.startswith('0 '):
+    if line.startswith('# '):
       continue
     temp = line.split()
-    largeOp.append(float(temp[1]))
-    largeErr.append(float(temp[2]) / float(temp[1]))
+    num = int(temp[0])
+    bl = int(temp[1])
+    if bl > 0 and num == 0:
+      largeEig[0].append(float(temp[2]))
+      largeErr[0].append(float(temp[3]) / float(temp[2]))
+    elif bl > 0 and num == Nc - 1:
+      largeEig[1].append(float(temp[2]))
+      largeErr[1].append(float(temp[3]) / float(temp[2]))
 
-  blmax = len(smallOp)
-  if not len(largeOp) == blmax:
-    print "ERROR: inconsistent lengths: %d %d" % (blmax, len(largeOp))
+  # Sanity check
+  blmax = len(smallEig[0])
+  if not len(largeEig[0]) == blmax or not len(smallEig[1]) == blmax \
+                                   or not len(largeEig[1]) == blmax:
+    print "ERROR: inconsistent lengths: %d %d %d %d" \
+          % (blmax, len(largeEig[0]), len(smallEig[1]), len(largeEig[1]))
     sys.exit(1)
 
+  # Print xi
+  xi = np.zeros((2, blmax), dtype = np.float)
+  xiErr = np.zeros((2, blmax), dtype = np.float)
   outfile = open(outfilename, 'w')
   print "0 1.0     0.0"
   print >> outfile, "0 1.0     0.0"
+  for eig in range(2):
+    for bl in range(blmax):
+      xi[eig][bl] = smallEig[eig][bl] / largeEig[eig][bl]
+      xiErr[eig][bl] = xi[eig][bl]
+      xiErr[eig][bl] *= np.sqrt(smallErr[eig][bl]**2 + largeErr[eig][bl]**2)
   for bl in range(blmax):
-    xi = np.sqrt(smallOp[bl] / largeOp[bl])   # Square root to get xi itself
-                                              # -->0.5 in error propagation
-    xi_err = 0.5 * xi * np.sqrt(smallErr[bl]**2 + largeErr[bl]**2)
-    print "%d %.6g %.4g" % (bl + 1, xi, xi_err)
-    print >> outfile, "%d %.6g %.4g" % (bl + 1, xi, xi_err)
+    print "%d %.6g %.4g %.6g %.4g" \
+          % (bl + 1, xi[0][bl], xiErr[0][bl], xi[1][bl], xiErr[1][bl])
+    print >> outfile, "%d %.6g %.4g %.6g %.4g" \
+          % (bl + 1, xi[0][bl], xiErr[0][bl], xi[1][bl], xiErr[1][bl])
+  print
   outfile.close()
 # ------------------------------------------------------------------

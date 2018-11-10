@@ -60,9 +60,12 @@ if good == -1:
 
 # ------------------------------------------------------------------
 # Plaquette is special -- average two data per line
+# Also look at difference plaq_ss - plaq_st
 count = 0
-ave = 0.          # Accumulate within each block
+ave = 0.0         # Accumulate within each block
+diff = 0.0
 datList = []
+diffList = []
 begin = cut       # Where each block begins, to be incremented
 plaqfile = 'data/plaq.csv'
 for line in open(plaqfile):
@@ -73,13 +76,16 @@ for line in open(plaqfile):
   if MDTU <= cut:
     continue
   elif MDTU > begin and MDTU < (begin + block_size):
-    ave += (float(temp[1]) + float(temp[2])) / 2.0
+    ave += 0.5 * (float(temp[1]) + float(temp[2]))
+    diff += float(temp[1]) - float(temp[2])
     count += 1
   elif MDTU >= (begin + block_size):  # Move on to next block
     datList.append(ave / count)
+    diffList.append(diff / count)
     begin += block_size
     count = 1                     # Next block begins with this line
-    ave = (float(temp[1]) + float(temp[2])) / 2.0
+    ave = 0.5 * (float(temp[1]) + float(temp[2]))
+    diff = float(temp[1]) - float(temp[2])
 
 # Now print mean and standard error, assuming N>1
 dat = np.array(datList)
@@ -93,6 +99,14 @@ else:
   outfile = open(outfilename, 'w')
   print >> outfile, "%.8g %.4g # %d" % (ave, err, N)
   outfile.close()
+
+  dat = np.array(diffList)
+  ave = np.mean(dat, dtype = np.float64)
+  err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1)
+  outfilename = 'results/plaq_diff.dat'
+  outfile = open(outfilename, 'w')
+  print >> outfile, "%.8g %.4g # %d" % (ave, err, N)
+  outfile.close()
 # ------------------------------------------------------------------
 
 
@@ -102,9 +116,10 @@ else:
 # and monopole world line density
 # we're interested in the first datum on each line
 # For the Polyakov loop, this is the (Nc-normalized) modulus
-for obs in ['poly_mod', 'SB', 'SF', 'Flink', 'mono']:
+for obs in ['poly_mod', 'poly_mod_polar', 'SB', 'SF', 'Flink', 'mono']:
+  skip = -1
   count = 0
-  ave = 0.          # Accumulate within each block
+  ave = 0.0         # Accumulate within each block
   datList = []
   begin = cut       # Where each block begins, to be incremented
   obsfile = 'data/' + obs + '.csv'
@@ -120,19 +135,22 @@ for obs in ['poly_mod', 'SB', 'SF', 'Flink', 'mono']:
       count += 1
     elif MDTU >= (begin + block_size):  # Move on to next block
       if count == 0:
-        print "ERROR: no %s data to average at %d MDTU" % (obs, int(MDTU))
-        sys.exit(1)
+        print "WARNING: no %s data to average at %d MDTU" % (obs, int(MDTU))
+        skip = 1
+        break
       datList.append(ave / count)
       begin += block_size
       count = 1                         # Next block begins here
       ave = float(temp[1])
 
+  if len(datList) == 0:
+    skip = 1
+  if skip > 0:
+    continue
+
   # Now print mean and standard error, assuming N>1
   dat = np.array(datList)
   N = np.size(dat)
-  if N == 0:
-    print "WARNING: No", obs, "data"
-    continue
   ave = np.mean(dat, dtype = np.float64)
   err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1.0)
   outfilename = 'results/' + obs + '.dat'
@@ -144,12 +162,13 @@ for obs in ['poly_mod', 'SB', 'SF', 'Flink', 'mono']:
 
 
 # ------------------------------------------------------------------
-# For the core-minutes per MDTU
+# For algorithmic/cost quantities
 # we're again interested in the first datum on each line
 # but have to work in terms of trajectories rather than MDTU
-for obs in ['wallTU', 'cg_iters', 'accP']:
+for obs in ['wallTU', 'cg_iters', 'accP', 'exp_dS']:
+  skip = -1
   count = 0
-  ave = 0.          # Accumulate within each block
+  ave = 0.0         # Accumulate within each block
   datList = []
   begin = t_cut     # Where each block begins, to be incremented
   obsfile = 'data/' + obs + '.csv'
@@ -165,19 +184,22 @@ for obs in ['wallTU', 'cg_iters', 'accP']:
       count += 1
     elif traj >= (begin + t_block):     # Move on to next block
       if count == 0:
-        print "ERROR: no %s data to average at %d traj" % (obs, int(traj))
-        sys.exit(1)
+        print "WARNING: no %s data to average at %d traj" % (obs, int(traj))
+        skip = 1
+        break
       datList.append(ave / count)
       begin += t_block
       count = 1                         # Next block begins here
       ave = float(temp[1])
 
+  if len(datList) == 0:
+    skip = 1
+  if skip > 0:
+    continue
+
   # Now print mean and standard error, assuming N>1
   dat = np.array(datList)
   N = np.size(dat)
-  if N == 0:
-    print "WARNING: No", obs, "data"
-    continue
   ave = np.mean(dat, dtype = np.float64)
   err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1.0)
   outfilename = 'results/' + obs + '.dat'
@@ -192,6 +214,7 @@ for obs in ['wallTU', 'cg_iters', 'accP']:
 # For the plaquette determinant we're interested in all three data on each line
 # These are |det-1|^2, 1-Re(det) and Im(det)
 for obs in ['det']:
+  skip = -1
   count = 0
   ave = [0.0, 0.0, 0.0]       # Accumulate within each block
   datList = [[], [], []]
@@ -211,13 +234,19 @@ for obs in ['det']:
       count += 1
     elif MDTU >= (begin + block_size):  # Move on to next block
       if count == 0:
-        print "ERROR: no %s data to average at %d MDTU" % (obs, int(MDTU))
-        sys.exit(1)
+        print "WARNING: no %s data to average at %d MDTU" % (obs, int(MDTU))
+        skip = 1
+        break
       for i in range(len(ave)):
         datList[i].append(ave[i] / count)
         ave[i] = float(temp[i + 1])     # Next block begins here
       begin += block_size
       count = 1
+
+  if len(datList[0]) == 0:
+    skip = 1
+  if skip > 0:
+    continue
 
   # Now print mean and standard error, assuming N>1
   outfilename = 'results/' + obs + '.dat'
@@ -225,9 +254,6 @@ for obs in ['det']:
   for i in range(len(ave)):
     dat = np.array(datList[i])
     N = np.size(dat)
-    if N == 0:
-      print "WARNING: No", obs, "data"
-      continue
     ave[i] = np.mean(dat, dtype = np.float64)
     err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1.0)
     print >> outfile, "%.8g %.4g" % (ave[i], err),
@@ -238,12 +264,14 @@ for obs in ['det']:
 
 
 # ------------------------------------------------------------------
-# For the widths we're interested in all four data on each line
-# These correspond to plaq, Re(det), Im(det) and Tr[U.Udag]/N
-for obs in ['widths']:
+# For the widths and Wilson lines
+# we're interested in all four data on each line
+# These widths are for plaq, Re(det), Im(det) and Tr[U.Udag]/N
+for obs in ['widths', 'lines_mod', 'lines_mod_polar']:
+  skip = -1
   count = 0
-  ave = [0.0, 0.0, 0.0]       # Accumulate within each block
-  datList = [[], [], []]
+  ave = [0.0, 0.0, 0.0, 0.0]      # Accumulate within each block
+  datList = [[], [], [], []]
   begin = cut       # Where each block begins, to be incremented
   obsfile = 'data/' + obs + '.csv'
   for line in open(obsfile):
@@ -257,16 +285,23 @@ for obs in ['widths']:
       ave[0] += float(temp[1])
       ave[1] += float(temp[2])
       ave[2] += float(temp[3])
+      ave[3] += float(temp[4])
       count += 1
     elif MDTU >= (begin + block_size):  # Move on to next block
       if count == 0:
-        print "ERROR: no %s data to average at %d MDTU" % (obs, int(MDTU))
-        sys.exit(1)
+        print "WARNING: no %s data to average at %d MDTU" % (obs, int(MDTU))
+        skip = 1
+        break
       for i in range(len(ave)):
         datList[i].append(ave[i] / count)
         ave[i] = float(temp[i + 1])     # Next block begins here
       begin += block_size
       count = 1
+
+  if len(datList[0]) == 0:
+    skip = 1
+  if skip > 0:
+    continue
 
   # Now print mean and standard error, assuming N>1
   outfilename = 'results/' + obs + '.dat'
@@ -274,12 +309,78 @@ for obs in ['widths']:
   for i in range(len(ave)):
     dat = np.array(datList[i])
     N = np.size(dat)
-    if N == 0:
-      print "WARNING: No", obs, "data"
-      continue
     ave[i] = np.mean(dat, dtype = np.float64)
     err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1.0)
     print >> outfile, "%.8g %.4g" % (ave[i], err),
   print >> outfile, "# %d" % N
   outfile.close()
 # ------------------------------------------------------------------
+
+
+
+# ------------------------------------------------------------------
+# For the scalar eigenvalues we're interested in Nc data on each line
+for obs in ['scalar_eig_ave']:
+  # Figure out Nc from number of points on first non-trivial line
+  Nc = -1
+  obsfile = 'data/' + obs + '.csv'
+  for line in open(obsfile):
+    if line.startswith('M'):
+      continue
+    temp = line.split(',')
+    Nc = len(temp) - 1
+    break
+
+  if Nc < 0:
+    print "WARNING: No scalar eigenvalue data"
+    continue
+
+  ave = []      # Accumulate within each block
+  datList = []
+  for i in range(Nc):
+    ave.append(0.0)
+    datList.append([])
+
+  skip = -1
+  count = 0
+  begin = cut       # Where each block begins, to be incremented
+  for line in open(obsfile):
+    if line.startswith('M'):
+      continue
+    temp = line.split(',')
+    MDTU = float(temp[0])
+    if MDTU <= cut:
+      continue
+    elif MDTU > begin and MDTU < (begin + block_size):
+      for i in range(Nc):
+        ave[i] += float(temp[i + 1])
+      count += 1
+    elif MDTU >= (begin + block_size):  # Move on to next block
+      if count == 0:
+        print "WARNING: no %s data to average at %d MDTU" % (obs, int(MDTU))
+        skip = 1
+        break
+      for i in range(len(ave)):
+        datList[i].append(ave[i] / count)
+        ave[i] = float(temp[i + 1])     # Next block begins here
+      begin += block_size
+      count = 1
+
+  if len(datList[0]) == 0:
+    skip = 1
+  if skip > 0:
+    continue
+
+  # Now print mean and standard error, assuming N>1
+  outfilename = 'results/' + obs + '.dat'
+  outfile = open(outfilename, 'w')
+  for i in range(Nc):
+    dat = np.array(datList[i])
+    N = np.size(dat)
+    ave[i] = np.mean(dat, dtype = np.float64)
+    err = np.std(dat, dtype = np.float64) / np.sqrt(N - 1.0)
+    print >> outfile, "%.8g %.4g" % (ave[i], err),
+  print >> outfile, "# %d" % N
+  outfile.close()
+# ------------------------------------------------------------------
+

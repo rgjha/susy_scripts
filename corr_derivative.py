@@ -5,17 +5,12 @@ import glob
 import time
 import numpy as np
 # ------------------------------------------------------------------
-# Print blocked Konishi and SUGRA susceptibility averages
+# Compute the numerical derivative of the radial Konishi and SUGRA correlators
 # with blocked standard errors
 
 # For now only consider log-polar scalar field
 
-# Currently the measurement output uses the naive |r| for the A4* lattice
-# We just need to read, construct
-#   \int dr r^{n + 3} \cO(x_0 + r) \cO(x_0) = \int dr r^{n + 3} C(r)
-# for 0 <= n <= 3, and average
-
-# Parse argument: the file to analyze
+# Parse argument: which file to analyze
 # This file already handles the thermalization cut and blocking
 if len(sys.argv) < 2:
   print "Usage:", str(sys.argv[0]), "<file>"
@@ -34,7 +29,7 @@ if not os.path.isfile(toOpen):
 
 # Take a first pass through the file to read the number of blocks
 # and associate scalar distances with the corresponding label in the output
-dist = []          # List of distances |r|
+r = []          # List of r
 for line in open(toOpen):
   if line.startswith('Nblock '):
     Nblocks = int((line.split())[1])
@@ -49,14 +44,14 @@ for line in open(toOpen):
     tag1 = int(temp[4])
     tag2 = int(temp[5])
     if tag1 == 0 and tag2 == 0:
-      dist.append(float(temp[3]))
+      tr = float(temp[3])
+      if tr == 0:     # Skip r=0!
+        continue
+      r.append(tr)
   elif line.startswith('BLOCK_S 0 '):
     break             # Don't go through whole file yet
 
-Npts = len(dist)
-
-# Number of powers to consider: 0 <= n <= 4
-Nsus = 4
+Npts = len(r)
 # ------------------------------------------------------------------
 
 
@@ -73,9 +68,12 @@ for line in open(toOpen):
   # Format: BLOCK_K block# label r tag1 tag2 dat
   if line.startswith('BLOCK'):
     temp = line.split()
+    if float(temp[3]) == 0: # Skip r=0!
+      continue
 
+    # Shift label on r since we skip r=0...
     block = int(temp[1])
-    label = int(temp[2])
+    label = int(temp[2]) - 1
     tag1 = int(temp[4])
     tag2 = int(temp[5])
     if not tag1 == 0 or not tag2 == 0:
@@ -109,31 +107,26 @@ columns = [('r', float), ('dat', float)]
 Ktot    = np.array([sum(Kdat[x]) for x in range(Npts)])
 Stot    = np.array([sum(Sdat[x]) for x in range(Npts)])
 
-# Integrated susceptibility estimates for all jk samples
-susceptK = np.zeros((Nsus, Nblocks), dtype = np.float)
-susceptS = np.zeros_like(susceptK)
+# Effective dimension estimates for all jk samples
+derivK = np.empty((Npts - 1, Nblocks), dtype = np.float)
+derivS = np.empty_like(derivK)
 for i in range(Nblocks):    # Jackknife samples
-  # Need to sort data before we know which to integrate!
+  # Need to sort data before we know which to divide!
   K = np.zeros(Npts, dtype = columns)
   S = np.zeros_like(K)
   for x in range(Npts):
-    K[x][0] = dist[x]
+    K[x][0] = r[x]
     K[x][1] = (Ktot[x] - Kdat[x][i]) / (Nblocks - 1.0)
 
-    S[x][0] = dist[x]
+    S[x][0] = r[x]
     S[x][1] = (Stot[x] - Sdat[x][i]) / (Nblocks - 1.0)
 
   # Sort and record estimates -- note that r itself is not sorted
-  # Include factor of dr since points are not evenly spaced!!!
   K = np.sort(K, order='r')
   S = np.sort(S, order='r')
-  for n in range(Nsus):
-    # !!! Skipping first three points to avoid discretization artifacts...
-    for x in range(4, Npts):
-      r = K[x][0]
-      dr = K[x][0] - K[x - 1][0]
-      susceptK[n][i] += np.power(r, n + 3) * K[x][1] * dr
-      susceptS[n][i] += np.power(r, n + 3) * S[x][1] * dr
+  for x in range(Npts - 1):
+    derivK[x][i] = (K[x + 1][1] - K[x][1]) / (K[x + 1][0] - K[x][0])
+    derivS[x][i] = (S[x + 1][1] - S[x][1]) / (S[x + 1][0] - S[x][0])
 # ------------------------------------------------------------------
 
 
@@ -141,25 +134,28 @@ for i in range(Nblocks):    # Jackknife samples
 # ------------------------------------------------------------------
 # Now we can average over jackknife samples and print out results
 print "Analyzing %d blocks of length %d MDTU" % (Nblocks, block_size)
+Kfile = open('results/deriv_konishi.dat', 'w')
+print >> Kfile, "# Analyzing %d blocks of length %d MDTU" \
+                % (Nblocks, block_size)
 
-outfile = open('results/suscept.dat', 'w')
-print >> outfile, "# Analyzing %d blocks of length %d MDTU" \
-                  % (Nblocks, block_size)
-print >> outfile, "# n Konishi err SUGRA err"
+Sfile = open('results/deriv_sugra.dat', 'w')
+print >> Sfile, "# Analyzing %d blocks of length %d MDTU" \
+                % (Nblocks, block_size)
 
-for n in range(Nsus):
-  print >> outfile, "%d" % n,
+for x in range(Npts - 1):
+  mid_r = 0.5 * (K[x][0] + K[x + 1][0])
 
-  dat = np.array(susceptK[n])
-  ave = np.mean(dat, dtype = np.float64)
-  err = np.std(dat, dtype = np.float64) / np.sqrt(Nblocks - 1.0)
-  print >> outfile, "%.6g %.4g" % (ave, err),
+  # Konishi
+  ave = np.average(derivK[x])
+  var = (Nblocks - 1.0) * np.sum((derivK[x] - ave)**2) / float(Nblocks)
+  print >> Kfile, "%.4g %.6g %.4g" % (mid_r, -0.5 * ave, 0.5 * np.sqrt(var))
 
-  dat = np.array(susceptS[n])
-  ave = np.mean(dat, dtype = np.float64)
-  err = np.std(dat, dtype = np.float64) / np.sqrt(Nblocks - 1.0)
-  print >> outfile, "%.6g %.4g" % (ave, err)
-outfile.close()
+  # SUGRA
+  ave = np.average(derivS[x])
+  var = (Nblocks - 1.0) * np.sum((derivS[x] - ave)**2) / float(Nblocks)
+  print >> Sfile, "%.4g %.6g %.4g" % (mid_r, -0.5 * ave, 0.5 * np.sqrt(var))
+Kfile.close()
+Sfile.close()
 
 runtime += time.time()
 print "Runtime: %0.1f seconds" % runtime

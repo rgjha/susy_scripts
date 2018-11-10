@@ -6,14 +6,14 @@ if [ $# != 0 ]; then
 fi
 
 temp=`pwd`
-dir=${temp##*SYM/}   # Strip everything up to and including "SYM/"
-path=/nfs/beowulf03/schaich/SYM/$dir          # Customized for CU
+dir=${temp##*BMN/}   # Strip everything up to and including "SYM/"
+path=/nfs/beowulf03/schaich/SYM/BMN/$dir      # Customized for CU
 # ------------------------------------------------------------------
 
 
 
 # ------------------------------------------------------------------
-# Construct list of files in given ensemble, for parse_SYM.py
+# Construct list of files in given ensemble, for parse_BMN.py
 rm -f list.txt
 for i in $path/Out/out.* ; do
   echo ${i##*.} >> temp    # Strip everything up to and including the last "."
@@ -23,23 +23,23 @@ rm -f temp
 
 # Use list of files in given ensemble to extract time series data
 rm -f data/*.csv ERRORS
-echo "python ~schaich/scripts/parse_SYM.py"
-python ~schaich/scripts/parse_SYM.py
+echo "python ~schaich/scripts/parse_BMN.py"
+python ~schaich/scripts/parse_BMN.py
 chmod 664 data/*.csv
 rm -f list.txt            # Done with this
 
-# Check eigenvalue measurements
-python ~schaich/scripts/check_eig_pairs.py >> ERRORS
+# Not yet sure what structure BMN eigenvalues should have
+#python ~schaich/scripts/check_eig_pairs.py >> ERRORS
 
 # Replace Web page to update timestamp
 date=`date`
 rm -f index.html
-echo writeSYM $dir "$date"
-~schaich/scripts/writeSYM $dir "$date"
+echo writeBMN $dir "$date"
+~schaich/scripts/writeBMN $dir "$date"
 chmod 664 index.html
 
 # I like to monitor this
-grep Apparent ERRORS
+#grep Apparent ERRORS
 wc -l M*
 wc -l E*
 echo

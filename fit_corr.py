@@ -17,7 +17,8 @@ from scipy import special
 # second is block size (should be larger than autocorrelation time)
 # We discard any partial blocks at the end
 # Third argument is the minimum t to use in the fits (t_max = Nt / 2)
-# Fourth argument tells us whether to analyze "corr" or "stout" files
+# Fourth argument tells us which files to analyze
+#   (for example, "corr", "konishi0", "subtracted0")
 if len(sys.argv) < 5:
   print "Usage:", str(sys.argv[0]), "<cut> <block> <tmin> <tag>"
   sys.exit(1)
